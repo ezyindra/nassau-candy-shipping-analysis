@@ -1,3 +1,22 @@
+## Live Dashboard
+
+**Streamlit App:** [Open the Nassau Candy Shipping Analysis Dashboard](https://qrj6tagzjn243yhzrq6ljy.streamlit.app/)
+
+The dashboard provides interactive filters, shipment KPIs, geographic shipping summaries, shipping-mode comparisons, factory and product analysis, and downloadable summary data.
+
+## Running Locally
+
+From the repository root:
+
+```bash
+pip install -r requirements.txt
+streamlit run app/app.py
+```
+
+The application reads the dataset from `data/Nassau Candy Distributor.csv`.
+
+**Data note:** The recorded order and ship dates produce unusually long lead times. These values are retained as supplied, and the findings should not be interpreted as verified real-world delivery performance without validating the source dates.
+
 # Factory-to-Customer Shipping Route Efficiency Analysis
 
 ## Nassau Candy Distributor

@@ -1,3 +1,24 @@
+## 📄 Research Paper
+
+**Factory-to-Customer Shipping Route Efficiency Analysis: An Exploratory Case Study of Nassau Candy Distributor**
+
+This research presents an exploratory analysis of factory-to-customer shipping records using Python, Pandas, Plotly, and Streamlit. It examines sales performance, shipment activity, profitability, and data-quality issues through an interactive analytics dashboard.
+
+- **Author:** Indrajeet Gangawane
+- **Publication:** Zenodo
+- **DOI:** [10.5281/zenodo.23683017](https://doi.org/10.5281/zenodo.23683017)
+- **Read the paper:** [View the full research paper on Zenodo](https://zenodo.org/records/23683017)
+- **Source code:** [GitHub Repository](https://github.com/ezyindra/nassau-candy-shipping-analysis)
+
+### How to cite
+
+Gangawane, I. (2026). *Factory-to-Customer Shipping Route Efficiency Analysis: An Exploratory Case Study of Nassau Candy Distributor*. Zenodo. https://doi.org/10.5281/zenodo.23683017
+
+**Keywords:** Supply Chain Analytics, Shipping Data Analysis, Logistics, Python, Pandas, Plotly, Streamlit, Data Visualization.
+
+*Note: This is a publicly available research paper hosted on Zenodo. A DOI does not itself indicate peer review or journal acceptance.*
+
+
 ## Live Dashboard
 
 **Streamlit App:** [Open the Nassau Candy Shipping Analysis Dashboard](https://qrj6tagzjn243yhzrq6ljy.streamlit.app/)

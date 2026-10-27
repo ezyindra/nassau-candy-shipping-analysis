@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import pandas as pd
@@ -5,33 +6,41 @@ import plotly.express as px
 import streamlit as st
 
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------------------------------------------------
+# Page setup
+# ---------------------------------------------------------
 st.set_page_config(
-    page_title="Nassau Candy | Shipping Analytics",
+    page_title="Nassau Candy | Shipping Analysis",
     page_icon="📦",
     layout="wide",
 )
 
-st.title("📦 Nassau Candy Distributor")
-st.subheader("Factory-to-Customer Shipping Route Efficiency Analysis")
-st.caption("Shipping analytics • Factory performance • Route intelligence")
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
+    div[data-testid="stMetric"] {
+        background: rgba(128, 128, 128, 0.07);
+        border: 1px solid rgba(128, 128, 128, 0.18);
+        padding: 14px;
+        border-radius: 8px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-
-# ---------------- PATHS AND CONFIG ----------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = PROJECT_ROOT / "data" / "Nassau Candy Distributor.csv"
 
-REQUIRED_COLUMNS = [
-    "Order ID", "Order Date", "Ship Date", "Ship Mode", "Customer ID",
-    "Country/Region", "State/Province", "Region", "Product ID",
-    "Product Name", "Sales", "Units", "Gross Profit", "Cost",
-]
-
-# Exact product names from the supplied CSV are used here.
 FACTORY_MAPPING = {
     "Wonka Bar - Nutty Crunch Surprise": "Lot's O' Nuts",
     "Wonka Bar - Fudge Mallows": "Lot's O' Nuts",
     "Wonka Bar -Scrumdiddlyumptious": "Lot's O' Nuts",
+    "Wonka Bar - Scrumdiddlyumptious": "Lot's O' Nuts",
     "Wonka Bar - Milk Chocolate": "Wicked Choccy's",
     "Wonka Bar - Triple Dazzle Caramel": "Wicked Choccy's",
     "Laffy Taffy": "Sugar Shack",
@@ -46,176 +55,415 @@ FACTORY_MAPPING = {
     "Kazookles": "The Other Factory",
 }
 
-# Plotly's USA-states mode expects postal abbreviations, not full state names.
-US_STATE_ABBR = {
-    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
-    "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
-    "District of Columbia": "DC", "Florida": "FL", "Georgia": "GA", "Hawaii": "HI",
-    "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
-    "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME",
-    "Maryland": "MD", "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN",
-    "Mississippi": "MS", "Missouri": "MO", "Montana": "MT", "Nebraska": "NE",
-    "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM",
-    "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH",
-    "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI",
-    "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX",
-    "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
+US_STATE_CODES = {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ",
+    "Arkansas": "AR", "California": "CA", "Colorado": "CO",
+    "Connecticut": "CT", "Delaware": "DE", "Florida": "FL",
+    "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+    "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
+    "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA",
+    "Maine": "ME", "Maryland": "MD", "Massachusetts": "MA",
+    "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+    "Missouri": "MO", "Montana": "MT", "Nebraska": "NE",
+    "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ",
+    "New Mexico": "NM", "New York": "NY", "North Carolina": "NC",
+    "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+    "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI",
+    "South Carolina": "SC", "South Dakota": "SD",
+    "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
+    "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
     "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY",
+    "District of Columbia": "DC",
 }
 
 
-# ---------------- DATA LOADING ----------------
+# ---------------------------------------------------------
+# Data loading and preparation
+# ---------------------------------------------------------
 @st.cache_data
 def load_data(csv_path: str) -> pd.DataFrame:
     data = pd.read_csv(csv_path)
 
-    missing_columns = [column for column in REQUIRED_COLUMNS if column not in data.columns]
-    if missing_columns:
+    required_columns = [
+        "Order ID", "Order Date", "Ship Date", "Ship Mode",
+        "Country/Region", "State/Province", "Region",
+        "Product ID", "Product Name", "Sales", "Units",
+        "Gross Profit", "Cost",
+    ]
+
+    missing = [
+        column for column in required_columns
+        if column not in data.columns
+    ]
+
+    if missing:
         raise ValueError(
-            "The CSV is missing required columns: " + ", ".join(missing_columns)
+            "The CSV is missing required columns: "
+            + ", ".join(missing)
         )
 
-    # Parse mixed date formats without changing the original CSV.
-    for column in ["Order Date", "Ship Date"]:
+    # The source contains mixed date formats.
+    for column in ("Order Date", "Ship Date"):
         data[column] = pd.to_datetime(
-            data[column].astype("string").str.strip(),
+            data[column].astype(str).str.strip(),
             format="mixed",
             dayfirst=True,
             errors="coerce",
         )
 
-    for column in ["Sales", "Units", "Gross Profit", "Cost"]:
-        data[column] = pd.to_numeric(data[column], errors="coerce")
+    for column in ("Sales", "Units", "Gross Profit", "Cost"):
+        data[column] = pd.to_numeric(
+            data[column], errors="coerce"
+        )
 
-    # Trim accidental spaces while preserving the actual product wording.
-    data["Product Name"] = data["Product Name"].astype("string").str.strip()
-    data["Factory"] = data["Product Name"].map(FACTORY_MAPPING)
+    data["Factory"] = (
+        data["Product Name"].map(FACTORY_MAPPING)
+        .fillna("Unmapped")
+    )
 
-    data["Lead Time (Days)"] = (
+    data["Lead Time Days"] = (
         data["Ship Date"] - data["Order Date"]
     ).dt.days
 
-    data["Route"] = (
-        data["Factory"].fillna("Unknown Factory").astype(str)
-        + " → "
-        + data["State/Province"].fillna("Unknown State").astype(str)
+    data["State_Code"] = data["State/Province"].map(
+        US_STATE_CODES
     )
 
     return data
 
 
+st.title("Nassau Candy")
+st.subheader("Factory-to-customer shipping analysis")
+st.caption(
+    "An exploratory look at shipment volume, sales, shipping modes "
+    "and factory-to-state routes."
+)
+
 if not DATA_PATH.exists():
-    st.error("Dataset file not found.")
-    st.write("Expected location:", str(DATA_PATH))
+    st.error(f"Dataset not found: {DATA_PATH}")
     st.info(
-        "Keep `Nassau Candy Distributor.csv` inside the project's `data` folder. "
-        "The `data` folder should sit beside the `app` folder."
+        "Place 'Nassau Candy Distributor.csv' inside the project's "
+        "'data' folder."
     )
     st.stop()
 
 try:
     df = load_data(str(DATA_PATH))
 except Exception as exc:
-    st.error(f"Could not load or validate the dataset: {exc}")
+    st.error(f"Unable to load the dataset: {exc}")
     st.stop()
 
 if df.empty:
-    st.error("The dataset contains no records.")
+    st.warning("The dataset contains no records.")
     st.stop()
 
 
-# ---------------- SIDEBAR FILTERS ----------------
-st.sidebar.header("Dashboard Filters")
+# ---------------------------------------------------------
+# Sidebar filters
+# ---------------------------------------------------------
+st.sidebar.header("Analysis filters")
 
-region_values = sorted(df["Region"].dropna().astype(str).unique().tolist())
-mode_values = sorted(df["Ship Mode"].dropna().astype(str).unique().tolist())
-factory_values = sorted(df["Factory"].dropna().astype(str).unique().tolist())
+countries = sorted(
+    df["Country/Region"].dropna().unique().tolist()
+)
+selected_countries = st.sidebar.multiselect(
+    "Country",
+    countries,
+    default=countries,
+)
 
+regions = sorted(
+    df["Region"].dropna().unique().tolist()
+)
 selected_regions = st.sidebar.multiselect(
-    "Region", region_values, default=region_values
+    "Region",
+    regions,
+    default=regions,
+)
+
+ship_modes = sorted(
+    df["Ship Mode"].dropna().unique().tolist()
 )
 selected_modes = st.sidebar.multiselect(
-    "Shipping mode", mode_values, default=mode_values
+    "Shipping mode",
+    ship_modes,
+    default=ship_modes,
+)
+
+factories = sorted(
+    df["Factory"].dropna().unique().tolist()
 )
 selected_factories = st.sidebar.multiselect(
-    "Factory", factory_values, default=factory_values
+    "Factory",
+    factories,
+    default=factories,
 )
 
 filtered = df[
-    df["Region"].astype("string").isin(selected_regions)
-    & df["Ship Mode"].astype("string").isin(selected_modes)
-    & df["Factory"].astype("string").isin(selected_factories)
+    df["Country/Region"].isin(selected_countries)
+    & df["Region"].isin(selected_regions)
+    & df["Ship Mode"].isin(selected_modes)
+    & df["Factory"].isin(selected_factories)
 ].copy()
 
 if filtered.empty:
-    st.warning("No records match these filters. Change your selections in the sidebar.")
+    st.warning("No records match these filters. Change your selections.")
     st.stop()
 
 
-# ---------------- DATA QUALITY ----------------
+# ---------------------------------------------------------
+# Overview KPIs
+# ---------------------------------------------------------
 st.divider()
-st.subheader("⚠️ Data Quality Check")
-
-valid_lead = filtered["Lead Time (Days)"].dropna()
-long_shipments = int((valid_lead > 30).sum())
-missing_dates = int(filtered[["Order Date", "Ship Date"]].isna().any(axis=1).sum())
-negative_lead = int((valid_lead < 0).sum())
-missing_factory = int(filtered["Factory"].isna().sum())
-median_lead = valid_lead.median() if not valid_lead.empty else float("nan")
-
-st.warning(
-    "The source dates show an unusual gap: shipment dates are several years after "
-    "order dates. The original dates are preserved and have not been silently changed. "
-    "Lead-time and delay results are therefore provisional and should not be presented "
-    "as verified carrier performance until the source dates are confirmed."
-)
-
-q1, q2, q3, q4 = st.columns(4)
-q1.metric("Records with lead time > 30 days", f"{long_shipments:,}")
-q2.metric(
-    "Median lead time",
-    f"{median_lead:,.0f} days" if pd.notna(median_lead) else "N/A",
-)
-q3.metric("Records with missing dates", f"{missing_dates:,}")
-q4.metric("Missing factory mappings", f"{missing_factory:,}")
-
-if negative_lead:
-    st.error(f"{negative_lead:,} record(s) have a negative lead time; review the source dates.")
-
-
-# ---------------- SHIPPING OVERVIEW ----------------
-st.divider()
-st.subheader("📊 Shipping Overview")
+st.header("Shipping overview")
 
 total_sales = filtered["Sales"].sum()
-total_profit = filtered["Gross Profit"].sum()
 total_units = filtered["Units"].sum()
-record_count = len(filtered)
+total_profit = filtered["Gross Profit"].sum()
+shipment_records = len(filtered)
 unique_orders = filtered["Order ID"].nunique()
-avg_lead = valid_lead.mean() if not valid_lead.empty else float("nan")
-gross_margin = (total_profit / total_sales * 100) if total_sales else float("nan")
 
-k1, k2, k3, k4, k5, k6 = st.columns(6)
+valid_lead_times = filtered["Lead Time Days"].dropna()
+average_lead_time = (
+    valid_lead_times.mean()
+    if not valid_lead_times.empty else None
+)
+
+gross_margin = (
+    total_profit / total_sales * 100
+    if total_sales else 0
+)
+
+k1, k2, k3, k4, k5 = st.columns(5)
+
 k1.metric("Sales", f"${total_sales:,.2f}")
-k2.metric("Gross Profit", f"${total_profit:,.2f}")
-k3.metric("Gross Margin", f"{gross_margin:.2f}%" if pd.notna(gross_margin) else "N/A")
-k4.metric("Units", f"{total_units:,.0f}")
-k5.metric("Shipment Records", f"{record_count:,}")
-k6.metric("Unique Orders", f"{unique_orders:,}")
+k2.metric("Shipment records", f"{shipment_records:,}")
+k3.metric("Unique orders", f"{unique_orders:,}")
+k4.metric("Units shipped", f"{total_units:,.0f}")
+k5.metric("Gross profit", f"${total_profit:,.2f}")
+
+k6, k7 = st.columns(2)
+k6.metric("Gross margin", f"{gross_margin:.1f}%")
+k7.metric(
+    "Average recorded lead time",
+    (
+        f"{average_lead_time:,.1f} days"
+        if average_lead_time is not None
+        else "Unavailable"
+    ),
+)
 
 st.caption(
-    f"Average calculated lead time: {avg_lead:,.1f} days."
-    if pd.notna(avg_lead)
-    else "Average calculated lead time is unavailable."
+    "Shipment records count dataset rows. Unique orders count distinct "
+    "Order IDs; an order can contain multiple records."
 )
 
 
-# ---------------- FACTORY PERFORMANCE ----------------
+# ---------------------------------------------------------
+# Data quality notes
+# ---------------------------------------------------------
+st.header("Data quality")
+
+invalid_dates = int(
+    (filtered["Order Date"].isna()
+     | filtered["Ship Date"].isna()).sum()
+)
+
+negative_lead_times = int(
+    (filtered["Lead Time Days"] < 0).sum()
+)
+
+long_lead_times = int(
+    (filtered["Lead Time Days"] > 30).sum()
+)
+
+q1, q2, q3 = st.columns(3)
+q1.metric("Rows with missing/invalid dates", f"{invalid_dates:,}")
+q2.metric("Negative lead times", f"{negative_lead_times:,}")
+q3.metric("Lead times over 30 days", f"{long_lead_times:,}")
+
+if not valid_lead_times.empty and valid_lead_times.median() > 30:
+    st.warning(
+        "The recorded shipping lead times are unusually long. "
+        "Check the source dates before using lead time to judge "
+        "real-world delivery performance. The original dates have "
+        "not been automatically corrected."
+    )
+
+with st.expander("About the lead-time calculation"):
+    st.write(
+        "Lead time is calculated as Ship Date minus Order Date. "
+        "Invalid dates are excluded from lead-time statistics. "
+        "The analysis preserves the source values rather than "
+        "guessing replacement dates."
+    )
+
+
+# ---------------------------------------------------------
+# Geographic shipping demand
+# ---------------------------------------------------------
 st.divider()
-st.subheader("🏭 Factory Performance")
+st.header("Geographic shipping demand")
+
+available_countries = sorted(
+    filtered["Country/Region"].dropna().unique().tolist()
+)
+
+if available_countries:
+    map_country = st.selectbox(
+        "Choose a country",
+        available_countries,
+        key="map_country",
+    )
+
+    geo_data = filtered[
+        filtered["Country/Region"] == map_country
+    ].copy()
+
+    state_summary = (
+        geo_data.groupby("State/Province", dropna=False)
+        .agg(
+            Shipments=("Order ID", "size"),
+            Units=("Units", "sum"),
+            Sales=("Sales", "sum"),
+        )
+        .reset_index()
+        .sort_values("Shipments", ascending=False)
+    )
+
+    if map_country == "United States":
+        state_summary["State_Code"] = (
+            state_summary["State/Province"].map(US_STATE_CODES)
+        )
+        map_data = state_summary.dropna(
+            subset=["State_Code"]
+        ).copy()
+
+        if not map_data.empty:
+            fig_map = px.choropleth(
+                map_data,
+                locations="State_Code",
+                locationmode="USA-states",
+                color="Shipments",
+                scope="usa",
+                color_continuous_scale="Blues",
+                hover_name="State/Province",
+                hover_data={
+                    "Shipments": ":,",
+                    "Units": ":,",
+                    "Sales": ":$,.2f",
+                    "State_Code": False,
+                },
+                title="US shipping demand by state",
+            )
+            fig_map.update_layout(
+                margin=dict(l=0, r=0, t=50, b=0)
+            )
+            st.plotly_chart(
+                fig_map, use_container_width=True
+            )
+        else:
+            st.info(
+                "No recognized US state names are available "
+                "for the map with the current filters."
+            )
+    else:
+        st.info(
+            "The map currently visualizes US states. "
+            "Canadian province-level mapping is not included; "
+            "the province summary is available below."
+        )
+
+    st.subheader(f"{map_country}: state/province summary")
+    st.dataframe(
+        state_summary,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "Download geographic summary",
+        data=state_summary.to_csv(index=False).encode("utf-8"),
+        file_name="geographic_shipping_summary.csv",
+        mime="text/csv",
+    )
+
+
+# ---------------------------------------------------------
+# Shipping mode comparison
+# ---------------------------------------------------------
+st.divider()
+st.header("Shipping mode comparison")
+
+mode_summary = (
+    filtered.groupby("Ship Mode")
+    .agg(
+        Shipment_Records=("Order ID", "size"),
+        Unique_Orders=("Order ID", "nunique"),
+        Units=("Units", "sum"),
+        Sales=("Sales", "sum"),
+        Gross_Profit=("Gross Profit", "sum"),
+        Average_Lead_Time=("Lead Time Days", "mean"),
+    )
+    .reset_index()
+    .sort_values("Shipment_Records", ascending=False)
+)
+
+left, right = st.columns(2)
+
+with left:
+    fig_modes = px.bar(
+        mode_summary,
+        x="Ship Mode",
+        y="Shipment_Records",
+        color="Ship Mode",
+        title="Shipment records by shipping mode",
+        labels={
+            "Ship Mode": "Shipping mode",
+            "Shipment_Records": "Shipment records",
+        },
+    )
+    fig_modes.update_layout(showlegend=False)
+    st.plotly_chart(
+        fig_modes, use_container_width=True
+    )
+
+with right:
+    fig_mode_sales = px.bar(
+        mode_summary,
+        x="Ship Mode",
+        y="Sales",
+        color="Ship Mode",
+        title="Sales by shipping mode",
+        labels={"Sales": "Sales ($)"},
+    )
+    fig_mode_sales.update_layout(showlegend=False)
+    st.plotly_chart(
+        fig_mode_sales, use_container_width=True
+    )
+
+st.dataframe(
+    mode_summary.round(2),
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.download_button(
+    "Download shipping-mode summary",
+    data=mode_summary.to_csv(index=False).encode("utf-8"),
+    file_name="shipping_mode_summary.csv",
+    mime="text/csv",
+)
+
+
+# ---------------------------------------------------------
+# Factory performance
+# ---------------------------------------------------------
+st.divider()
+st.header("Factory performance")
 
 factory_summary = (
-    filtered.groupby("Factory", dropna=False)
+    filtered.groupby("Factory")
     .agg(
         Shipment_Records=("Order ID", "size"),
         Unique_Orders=("Order ID", "nunique"),
@@ -223,266 +471,213 @@ factory_summary = (
         Sales=("Sales", "sum"),
         Gross_Profit=("Gross Profit", "sum"),
         Cost=("Cost", "sum"),
-        Average_Lead_Time=("Lead Time (Days)", "mean"),
     )
     .reset_index()
+    .sort_values("Sales", ascending=False)
 )
 
-factory_summary["Gross Margin (%)"] = (
+factory_summary["Gross_Margin_Percent"] = (
     factory_summary["Gross_Profit"]
-    / factory_summary["Sales"].replace(0, float("nan"))
-    * 100
-).round(2)
-factory_summary["Average_Lead_Time"] = factory_summary["Average_Lead_Time"].round(2)
+    .div(factory_summary["Sales"].replace(0, pd.NA))
+    .mul(100)
+)
 
 left, right = st.columns(2)
+
 with left:
     fig_factory_sales = px.bar(
-        factory_summary.sort_values("Sales", ascending=True),
-        x="Sales",
-        y="Factory",
-        orientation="h",
-        title="Sales by Factory",
-        text_auto=".2s",
+        factory_summary,
+        x="Factory",
+        y="Sales",
+        color="Factory",
+        title="Sales by factory",
+        labels={"Sales": "Sales ($)"},
     )
-    fig_factory_sales.update_layout(yaxis_title="", xaxis_title="Sales ($)")
-    st.plotly_chart(fig_factory_sales, use_container_width=True)
+    fig_factory_sales.update_layout(showlegend=False)
+    st.plotly_chart(
+        fig_factory_sales, use_container_width=True
+    )
 
 with right:
-    fig_factory_margin = px.bar(
-        factory_summary.sort_values("Gross Margin (%)", ascending=True),
-        x="Gross Margin (%)",
-        y="Factory",
-        orientation="h",
-        title="Gross Margin by Factory",
-        text_auto=".1f",
+    fig_factory_units = px.bar(
+        factory_summary,
+        x="Factory",
+        y="Units",
+        color="Factory",
+        title="Units by factory",
     )
-    fig_factory_margin.update_layout(yaxis_title="", xaxis_title="Gross margin (%)")
-    st.plotly_chart(fig_factory_margin, use_container_width=True)
+    fig_factory_units.update_layout(showlegend=False)
+    st.plotly_chart(
+        fig_factory_units, use_container_width=True
+    )
 
 st.dataframe(
-    factory_summary.sort_values("Sales", ascending=False),
+    factory_summary.round(2),
     use_container_width=True,
     hide_index=True,
 )
 
+if (filtered["Factory"] == "Unmapped").any():
+    st.warning(
+        "Some product names do not have a factory mapping. "
+        "Review the mapping before drawing factory-level conclusions."
+    )
 
-# ---------------- SHIP MODE COMPARISON ----------------
+
+# ---------------------------------------------------------
+# Factory-to-customer route analysis
+# ---------------------------------------------------------
 st.divider()
-st.subheader("🚚 Shipping Mode Comparison")
+st.header("Factory-to-customer route analysis")
 
-ship_summary = (
-    filtered.groupby("Ship Mode", dropna=False)
+route_summary = (
+    filtered.groupby(
+        ["Factory", "State/Province"], dropna=False
+    )
     .agg(
         Shipment_Records=("Order ID", "size"),
         Unique_Orders=("Order ID", "nunique"),
         Units=("Units", "sum"),
         Sales=("Sales", "sum"),
         Gross_Profit=("Gross Profit", "sum"),
-        Average_Lead_Time=("Lead Time (Days)", "mean"),
+        Average_Lead_Time=("Lead Time Days", "mean"),
     )
     .reset_index()
+    .sort_values("Shipment_Records", ascending=False)
 )
 
-ship_summary["Average_Lead_Time"] = ship_summary["Average_Lead_Time"].round(2)
-ship_summary["Gross Margin (%)"] = (
-    ship_summary["Gross_Profit"]
-    / ship_summary["Sales"].replace(0, float("nan"))
-    * 100
-).round(2)
+route_summary["Average_Lead_Time"] = (
+    route_summary["Average_Lead_Time"].round(2)
+)
 
-c1, c2 = st.columns(2)
-with c1:
-    fig_modes = px.bar(
-        ship_summary,
-        x="Ship Mode",
-        y="Shipment_Records",
-        color="Ship Mode",
-        title="Shipment Records by Shipping Mode",
-        text_auto=True,
+st.caption(
+    "Routes are grouped by the product's mapped factory and the "
+    "customer's recorded state or province. The dataset does not "
+    "provide factory coordinates or actual transport paths."
+)
+
+route_search = st.text_input(
+    "Search factory or state/province",
+    placeholder="For example: Sugar Shack or California",
+)
+
+if route_search.strip():
+    search_mask = (
+        route_summary["Factory"].astype(str).str.contains(
+            route_search, case=False, na=False
+        )
+        | route_summary["State/Province"].astype(str).str.contains(
+            route_search, case=False, na=False
+        )
     )
-    st.plotly_chart(fig_modes, use_container_width=True)
+    displayed_routes = route_summary[search_mask]
+else:
+    displayed_routes = route_summary
 
-with c2:
-    fig_mode_sales = px.bar(
-        ship_summary,
-        x="Ship Mode",
-        y="Sales",
-        color="Ship Mode",
-        title="Sales by Shipping Mode",
-        text_auto=".2s",
-    )
-    st.plotly_chart(fig_mode_sales, use_container_width=True)
+st.dataframe(
+    displayed_routes,
+    use_container_width=True,
+    hide_index=True,
+)
 
-st.dataframe(ship_summary, use_container_width=True, hide_index=True)
+st.download_button(
+    "Download route analysis",
+    data=route_summary.to_csv(index=False).encode("utf-8"),
+    file_name="factory_customer_route_analysis.csv",
+    mime="text/csv",
+)
 
 
-# ---------------- GEOGRAPHIC SHIPPING MAP ----------------
+# ---------------------------------------------------------
+# Product drill-down
+# ---------------------------------------------------------
 st.divider()
-st.subheader("🗺️ Geographic Shipping Demand")
+st.header("Product drill-down")
 
-countries = sorted(filtered["Country/Region"].dropna().astype(str).unique().tolist())
-if countries:
-    selected_country = st.selectbox("Choose country", countries)
-    country_df = filtered[
-        filtered["Country/Region"].astype("string") == selected_country
-    ].copy()
+product_summary = (
+    filtered.groupby(
+        ["Product ID", "Product Name", "Factory"],
+        dropna=False,
+    )
+    .agg(
+        Shipment_Records=("Order ID", "size"),
+        Unique_Orders=("Order ID", "nunique"),
+        Units=("Units", "sum"),
+        Sales=("Sales", "sum"),
+        Gross_Profit=("Gross Profit", "sum"),
+        Cost=("Cost", "sum"),
+    )
+    .reset_index()
+    .sort_values("Sales", ascending=False)
+)
 
-    state_summary = (
-        country_df.groupby("State/Province", dropna=False)
+product_options = product_summary["Product Name"].dropna().tolist()
+
+if product_options:
+    selected_product = st.selectbox(
+        "Choose a product",
+        product_options,
+    )
+
+    product_details = filtered[
+        filtered["Product Name"] == selected_product
+    ]
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric(
+        "Product sales",
+        f"${product_details['Sales'].sum():,.2f}",
+    )
+    p2.metric(
+        "Units",
+        f"{product_details['Units'].sum():,.0f}",
+    )
+    p3.metric(
+        "Gross profit",
+        f"${product_details['Gross Profit'].sum():,.2f}",
+    )
+
+    product_routes = (
+        product_details.groupby(
+            ["Factory", "State/Province"], dropna=False
+        )
         .agg(
-            Shipments=("Order ID", "size"),
+            Shipment_Records=("Order ID", "size"),
             Units=("Units", "sum"),
             Sales=("Sales", "sum"),
         )
         .reset_index()
+        .sort_values("Shipment_Records", ascending=False)
     )
 
-    if selected_country == "United States":
-        state_summary["State_Code"] = (
-            state_summary["State/Province"].astype(str).str.strip()
-            .map(US_STATE_ABBR)
-        )
-        # If the source already uses two-letter state codes, keep them.
-        already_abbreviated = state_summary["State/Province"].astype(str).str.fullmatch(r"[A-Z]{2}")
-        state_summary.loc[already_abbreviated, "State_Code"] = state_summary.loc[
-            already_abbreviated, "State/Province"
-        ]
-
-        map_data = state_summary.dropna(subset=["State_Code"]).copy()
-        if map_data.empty:
-            st.info(
-                "No recognizable US state names/codes were found for the map. "
-                "The state-level data table is shown below."
-            )
-        else:
-            fig_map = px.choropleth(
-                map_data,
-                locations="State_Code",
-                locationmode="USA-states",
-                color="Shipments",
-                scope="usa",
-                hover_name="State/Province",
-                hover_data={"Units": True, "Sales": ":$,.2f", "State_Code": False},
-                color_continuous_scale="Blues",
-                title="US Shipping Demand by State",
-            )
-            st.plotly_chart(fig_map, use_container_width=True)
-    else:
-        st.info(
-            "The map currently visualizes US states. Province-level Canadian mapping "
-            "is not included; the province summary remains available below."
-        )
-
+    st.write("Recorded destinations for this product")
     st.dataframe(
-        state_summary.sort_values("Shipments", ascending=False),
-        use_container_width=True,
-        hide_index=True,
-    )
-else:
-    st.info("No country values are available after filtering.")
-
-
-# ---------------- ROUTE ANALYSIS ----------------
-st.divider()
-st.subheader("🧭 Route Efficiency Analysis")
-
-route_summary = (
-    filtered.groupby("Route", dropna=False)
-    .agg(
-        Route_Volume=("Order ID", "size"),
-        Unique_Orders=("Order ID", "nunique"),
-        Average_Lead_Time=("Lead Time (Days)", "mean"),
-        Sales=("Sales", "sum"),
-        Gross_Profit=("Gross Profit", "sum"),
-    )
-    .reset_index()
-)
-
-# A >30-day flag is only a provisional indicator, not verified carrier delay.
-delay_by_route = (
-    filtered.assign(Provisional_Delay=filtered["Lead Time (Days)"] > 30)
-    .groupby("Route")["Provisional_Delay"]
-    .sum()
-)
-route_summary["Delayed_Shipments"] = (
-    route_summary["Route"].map(delay_by_route).fillna(0).astype(int)
-)
-route_summary["Delay_Frequency (%)"] = (
-    route_summary["Delayed_Shipments"]
-    / route_summary["Route_Volume"].replace(0, float("nan"))
-    * 100
-).round(2)
-route_summary["Average_Lead_Time"] = route_summary["Average_Lead_Time"].round(2)
-
-st.caption(
-    "Provisional delay frequency uses a 30-day lead-time threshold because the dataset "
-    "does not contain a promised delivery date. It is not a verified carrier-delay rate."
-)
-
-max_volume = max(1, int(route_summary["Route_Volume"].max()))
-min_volume = st.slider(
-    "Minimum route shipment records",
-    min_value=1,
-    max_value=max_volume,
-    value=1,
-)
-route_view = route_summary[
-    route_summary["Route_Volume"] >= min_volume
-].sort_values("Route_Volume", ascending=False)
-
-st.dataframe(route_view, use_container_width=True, hide_index=True)
-
-route_options = sorted(filtered["Route"].dropna().astype(str).unique().tolist())
-if route_options:
-    selected_route = st.selectbox("Inspect a route", route_options)
-    detail = filtered[filtered["Route"].astype(str) == selected_route].copy()
-
-    st.markdown(f"**Selected route:** {selected_route}")
-    d1, d2, d3, d4 = st.columns(4)
-    d1.metric("Shipment records", f"{len(detail):,}")
-    d2.metric("Unique orders", f"{detail['Order ID'].nunique():,}")
-    d3.metric("Sales", f"${detail['Sales'].sum():,.2f}")
-    d4.metric("Gross profit", f"${detail['Gross Profit'].sum():,.2f}")
-
-    detail_columns = [
-        "Order ID", "Order Date", "Ship Date", "Ship Mode",
-        "Product Name", "Units", "Sales", "Lead Time (Days)",
-    ]
-    st.dataframe(
-        detail[detail_columns].sort_values("Order Date", na_position="last"),
+        product_routes,
         use_container_width=True,
         hide_index=True,
     )
 
+st.subheader("All products")
+st.dataframe(
+    product_summary.round(2),
+    use_container_width=True,
+    hide_index=True,
+)
 
-# ---------------- EXPORTS ----------------
+st.download_button(
+    "Download product summary",
+    data=product_summary.to_csv(index=False).encode("utf-8"),
+    file_name="product_summary.csv",
+    mime="text/csv",
+)
+
+
+# ---------------------------------------------------------
+# Footer
+# ---------------------------------------------------------
 st.divider()
-st.subheader("⬇️ Export Results")
-
-st.download_button(
-    "Download route analysis (CSV)",
-    data=route_view.to_csv(index=False).encode("utf-8"),
-    file_name="nassau_route_analysis.csv",
-    mime="text/csv",
-)
-
-st.download_button(
-    "Download filtered records (CSV)",
-    data=filtered.to_csv(index=False).encode("utf-8"),
-    file_name="nassau_filtered_shipments.csv",
-    mime="text/csv",
-)
-
-st.download_button(
-    "Download factory summary (CSV)",
-    data=factory_summary.to_csv(index=False).encode("utf-8"),
-    file_name="nassau_factory_summary.csv",
-    mime="text/csv",
-)
-
 st.caption(
-    "Nassau Candy Distributor | Unified Mentor internship project. "
-    "Results describe the supplied dataset. Shipping lead-time conclusions are "
-    "provisional until the source date anomaly is resolved."
+    "Nassau Candy Distributor | Exploratory shipping analysis. "
+    "Results describe the supplied dataset and should be validated "
+    "before operational decisions are made."
 )
